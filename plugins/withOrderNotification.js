@@ -2,18 +2,22 @@ const { withAndroidManifest, withDangerousMod, withMainApplication } = require('
 const fs = require('fs');
 const path = require('path');
 
-const listenerKt = (pkg, target) => `package ${pkg}
+const listenerKt = (pkg, targets) => `package ${pkg}
 
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
 class OrderNotificationListenerService : NotificationListenerService() {
+    private val targetPackages = setOf(${targets.map((t) => `"${t}"`).join(', ')})
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (sbn.packageName != "${target}") return
+        if (sbn.packageName !in targetPackages) return
         val extras = sbn.notification.extras
         val title = extras.getCharSequence("android.title")?.toString() ?: ""
-        val text = extras.getCharSequence("android.text")?.toString() ?: ""
+        val text = (extras.getCharSequence("android.bigText")
+            ?: extras.getCharSequence("android.text"))?.toString() ?: ""
         NotificationBridgeModule.instance?.emit(title, text)
+        PaymentSync.forward(title, text)
     }
 }
 `;
@@ -42,6 +46,8 @@ class NotificationBridgeModule(private val reactContext: ReactApplicationContext
     fun removeListeners(count: Int) {}
 
     fun emit(title: String, text: String) {
+        // Khi UI đã đóng thì không có ai nhận sự kiện, bỏ qua
+        if (!reactContext.hasActiveReactInstance()) return
         val params = Arguments.createMap().apply {
             putString("title", title)
             putString("text", text)
@@ -73,7 +79,20 @@ class NotificationPackage : ReactPackage {
 }
 `;
 
-module.exports = (config, { targetPackage }) => {
+// PaymentSync.kt là file mẫu: thay các placeholder bằng giá trị trong app.json
+const paymentSyncKt = (opts) =>
+  fs
+    .readFileSync(path.join(__dirname, 'native', 'PaymentSync.kt'), 'utf8')
+    .replace('__API_BASE__', opts.apiBase)
+    .replace('__ADMIN_TOKEN__', opts.adminToken);
+
+module.exports = (config, opts = {}) => {
+  const {
+    targetPackages = [],
+    apiBase = 'http://192.168.1.8:3000',
+    adminToken = 'REPLACE_WITH_ADMIN_TOKEN',
+  } = opts;
+
   config = withAndroidManifest(config, (c) => {
     const app = c.modResults.manifest.application[0];
     app.service = app.service || [];
@@ -97,9 +116,10 @@ module.exports = (config, { targetPackage }) => {
       const pkg = c.android.package;
       const dir = path.join(c.modRequest.platformProjectRoot, 'app/src/main/java', ...pkg.split('.'));
       fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'OrderNotificationListenerService.kt'), listenerKt(pkg, targetPackage));
+      fs.writeFileSync(path.join(dir, 'OrderNotificationListenerService.kt'), listenerKt(pkg, targetPackages));
       fs.writeFileSync(path.join(dir, 'NotificationBridgeModule.kt'), bridgeKt(pkg));
       fs.writeFileSync(path.join(dir, 'NotificationPackage.kt'), packageKt(pkg));
+      fs.writeFileSync(path.join(dir, 'PaymentSync.kt'), paymentSyncKt({ apiBase, adminToken }));
       return c;
     },
   ]);

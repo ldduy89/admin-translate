@@ -37,16 +37,12 @@
       [
         "./plugins/withOrderNotification",
         {
-          "targetPackage": "com.company.orderapp"
-        }
-      ],
-      [
-        "./plugins/withOrderNotification",
-        {
           "targetPackages": [
             "com.company.orderapp",
-            "package:com.mbmobile"
-          ]
+            "com.mbmobile"
+          ],
+          "apiBase": "http://192.168.1.8:3000",
+          "adminToken": "01756089"
         }
       ]
     ],

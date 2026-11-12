@@ -1,12 +1,12 @@
 import { Picker } from '@react-native-picker/picker';
 import { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { openNotificationAccess, useOrderNotifications } from '@/hooks/use-order-notifications';
+import { Notification, openNotificationAccess, useNotificationList } from '@/hooks/use-order-notifications';
 import { useTheme } from '@/hooks/use-theme';
 
 const PRIMARY = '#208AEF';
@@ -18,16 +18,51 @@ const LUOT_OPTIONS = [
   { label: '500.000đ', value: 500000 },
 ];
 
+const statusText = (n: Notification) => {
+  if (n.processed) return 'Đã xử lý';
+  if (n.claimed && n.last_error) return 'Cần kiểm tra';
+  if (n.claimed) return 'Đang xử lý';
+  return 'Chờ xử lý';
+};
+const statusColor = (n: Notification) => {
+  if (n.processed) return '#2e7d32';
+  if (n.claimed && n.last_error) return '#c62828';
+  if (n.claimed) return '#1976d2';
+  return '#ef6c00';
+};
+
+const money = (n: number) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
+
 export default function TranslateScreen() {
   const theme = useTheme();
   const [id, setId] = useState('');
   const [luot, setLuot] = useState<number>(LUOT_OPTIONS[0].value);
-  const orders = useOrderNotifications();
+  const { items, loading, refreshing, error, refresh, loadMore } = useNotificationList();
 
   const handleThem = () => {
     // TODO: xử lý thêm dữ liệu (id, luot)
     console.log('Thêm:', { id, luot });
   };
+
+  const renderItem = ({ item }: { item: Notification }) => (
+    <ThemedView type="backgroundElement" style={styles.card}>
+      <View style={styles.cardHeader}>
+        <ThemedText type="smallBold">+{money(item.amount)}</ThemedText>
+        <ThemedText type="small" style={{ color: statusColor(item) }}>
+          {statusText(item)}
+        </ThemedText>
+      </View>
+      <ThemedText type="small">ND: {item.content ?? '(trống)'}</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        Mã GD: {item.reference ?? '-'} · {new Date(item.transaction_time).toLocaleString()}
+      </ThemedText>
+      {item.last_error ? (
+        <ThemedText type="small" style={{ color: '#c62828' }}>
+          Lỗi: {item.last_error}
+        </ThemedText>
+      ) : null}
+    </ThemedView>
+  );
 
   return (
     <ThemedView style={styles.container}>
@@ -68,44 +103,42 @@ export default function TranslateScreen() {
             </Picker>
           </View>
 
-          <Pressable
-            onPress={handleThem}
-            style={({ pressed }) => [styles.button, { opacity: pressed ? 0.8 : 1 }]}>
+          <Pressable onPress={handleThem} style={({ pressed }) => [styles.button, { opacity: pressed ? 0.8 : 1 }]}>
             <ThemedText style={styles.buttonText}>Thêm</ThemedText>
           </Pressable>
 
           <Pressable
             onPress={openNotificationAccess}
-            style={({ pressed }) => [
-              styles.button,
-              styles.buttonSecondary,
-              { opacity: pressed ? 0.8 : 1 },
-            ]}>
+            style={({ pressed }) => [styles.button, styles.buttonSecondary, { opacity: pressed ? 0.8 : 1 }]}>
             <ThemedText style={styles.buttonText}>Cấp quyền đọc thông báo</ThemedText>
           </Pressable>
         </View>
 
-        <ThemedText type="smallBold" style={styles.sectionTitle}>
-          Thông báo đơn hàng
-        </ThemedText>
+        <View style={styles.sectionHeader}>
+          <ThemedText type="smallBold">Biến động số dư</ThemedText>
+          {error ? (
+            <Pressable onPress={refresh}>
+              <ThemedText type="small" style={{ color: '#c62828' }}>
+                Tải lại ({error})
+              </ThemedText>
+            </Pressable>
+          ) : null}
+        </View>
 
         <FlatList
           style={styles.list}
-          data={orders}
-          keyExtractor={(_, i) => String(i)}
+          data={items}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderItem}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <ThemedView type="backgroundElement" style={styles.card}>
-              <ThemedText type="smallBold">{item.title}</ThemedText>
-              <ThemedText type="small">{item.text}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {item.time}
-              </ThemedText>
-            </ThemedView>
-          )}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          onRefresh={refresh}
+          refreshing={refreshing}
+          ListFooterComponent={loading ? <ActivityIndicator style={styles.footer} /> : null}
           ListEmptyComponent={
             <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-              Chưa có thông báo đơn hàng
+              {refreshing ? 'Đang tải...' : 'Chưa có thông báo'}
             </ThemedText>
           }
         />
@@ -115,10 +148,7 @@ export default function TranslateScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-  },
+  container: { flex: 1, alignItems: 'center' },
   safeArea: {
     flex: 1,
     width: '100%',
@@ -127,13 +157,8 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingBottom: BottomTabInset,
   },
-  title: {
-    textAlign: 'center',
-    marginTop: Spacing.three,
-  },
-  form: {
-    gap: Spacing.two,
-  },
+  title: { textAlign: 'center', marginTop: Spacing.three },
+  form: { gap: Spacing.two },
   input: {
     borderWidth: 1,
     borderRadius: Spacing.two,
@@ -141,11 +166,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     fontSize: 16,
   },
-  pickerWrapper: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    overflow: 'hidden',
-  },
+  pickerWrapper: { borderWidth: 1, borderRadius: Spacing.two, overflow: 'hidden' },
   button: {
     backgroundColor: PRIMARY,
     borderRadius: Spacing.two,
@@ -153,31 +174,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.one,
   },
-  buttonSecondary: {
-    backgroundColor: '#546e7a',
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  sectionTitle: {
-    marginTop: Spacing.two,
-  },
-  list: {
-    flex: 1,
-  },
-  listContent: {
-    gap: Spacing.two,
-    paddingBottom: Spacing.three,
-  },
-  card: {
-    padding: Spacing.three,
-    borderRadius: Spacing.two,
-    gap: Spacing.half,
-  },
-  empty: {
-    textAlign: 'center',
-    marginTop: Spacing.four,
-  },
+  buttonSecondary: { backgroundColor: '#546e7a' },
+  buttonText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  list: { flex: 1 },
+  listContent: { gap: Spacing.two, paddingBottom: Spacing.three },
+  card: { padding: Spacing.three, borderRadius: Spacing.two, gap: Spacing.half },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
+  footer: { paddingVertical: Spacing.three },
+  empty: { textAlign: 'center', marginTop: Spacing.four },
 });
