@@ -22,10 +22,10 @@ export default function AppTabs() {
       <TabList asChild>
         <CustomTabList>
           <TabTrigger name="home" href="/" asChild>
-            <TabButton>Home</TabButton>
+            <TabButton>Biến động</TabButton>
           </TabTrigger>
-          <TabTrigger name="explore" href="/explore" asChild>
-            <TabButton>Explore</TabButton>
+          <TabTrigger name="device" href="/device" asChild>
+            <TabButton>Thông báo máy</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>

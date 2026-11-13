@@ -1,5 +1,6 @@
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { AppState, Linking, NativeEventEmitter, NativeModules, Platform } from 'react-native';
 
 import { ADMIN_TOKEN, API_BASE } from '@/config';
 
@@ -106,4 +107,70 @@ export async function addNotification(text: string): Promise<{ stored: boolean; 
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+// ---------- Thông báo trên máy (mọi app) ----------
+export type DeviceNotification = {
+  key: string;
+  package: string;
+  app: string;
+  title: string;
+  text: string;
+  time: number;
+};
+
+const MAX_DEVICE_ITEMS = 100;
+
+export function useDeviceNotifications() {
+  const [items, setItems] = useState<DeviceNotification[]>([]);
+
+  // Đọc danh sách đã lưu phía native (có cả thông báo nhận lúc app đóng)
+  const load = useCallback(async () => {
+    if (!NotificationBridge?.getRecent) return;
+    try {
+      const json: string = await NotificationBridge.getRecent();
+      setItems(JSON.parse(json));
+    } catch {
+      // bỏ qua, giữ danh sách hiện tại
+    }
+  }, []);
+
+  // Mở tab hoặc quay lại app thì tải lại
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') load();
+    });
+    return () => sub.remove();
+  }, [load]);
+
+  // Thông báo mới khi app đang mở: thêm lên đầu
+  useEffect(() => {
+    if (!NotificationBridge) return;
+    const emitter = new NativeEventEmitter(NotificationBridge);
+    const sub = emitter.addListener('DeviceNotification', (e: { json: string }) => {
+      try {
+        const item: DeviceNotification = JSON.parse(e.json);
+        setItems((prev) => [item, ...prev].slice(0, MAX_DEVICE_ITEMS));
+      } catch {
+        // bỏ qua thông báo lỗi định dạng
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const clear = useCallback(async () => {
+    setItems([]);
+    try {
+      await NotificationBridge?.clearRecent?.();
+    } catch {
+      // bỏ qua
+    }
+  }, []);
+
+  return { items, reload: load, clear };
 }

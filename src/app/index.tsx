@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { Notification, addNotification, useNotificationList } from '@/hooks/use-order-notifications';
 
@@ -177,7 +177,7 @@ export default function BienDongScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  safeArea: { flex: 1, width: '100%' },
+  safeArea: { flex: 1, width: '100%', paddingBottom: BottomTabInset },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
