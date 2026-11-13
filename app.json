@@ -21,7 +21,6 @@
       "package": "com.duyld.admintranslate"
     },
     "web": {
-      "output": "server",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -41,7 +40,7 @@
             "com.company.orderapp",
             "com.mbmobile"
           ],
-          "apiBase": "http://192.168.1.8:3000",
+          "apiBase": "https://ddtechtrans.up.railway.app",
           "adminToken": "01756089"
         }
       ]

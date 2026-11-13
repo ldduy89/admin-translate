@@ -1,22 +1,22 @@
-import { Picker } from '@react-native-picker/picker';
 import { useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { Notification, openNotificationAccess, useNotificationList } from '@/hooks/use-order-notifications';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-
-const PRIMARY = '#208AEF';
-
-const LUOT_OPTIONS = [
-  { label: '20.000đ', value: 20000 },
-  { label: '100.000đ', value: 100000 },
-  { label: '200.000đ', value: 200000 },
-  { label: '500.000đ', value: 500000 },
-];
+import { Notification, addNotification, useNotificationList } from '@/hooks/use-order-notifications';
 
 const statusText = (n: Notification) => {
   if (n.processed) return 'Đã xử lý';
@@ -24,6 +24,7 @@ const statusText = (n: Notification) => {
   if (n.claimed) return 'Đang xử lý';
   return 'Chờ xử lý';
 };
+
 const statusColor = (n: Notification) => {
   if (n.processed) return '#2e7d32';
   if (n.claimed && n.last_error) return '#c62828';
@@ -31,30 +32,53 @@ const statusColor = (n: Notification) => {
   return '#ef6c00';
 };
 
-const money = (n: number) => `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.')}đ`;
-
-export default function TranslateScreen() {
+export default function BienDongScreen() {
   const theme = useTheme();
-  const [id, setId] = useState('');
-  const [luot, setLuot] = useState<number>(LUOT_OPTIONS[0].value);
   const { items, loading, refreshing, error, refresh, loadMore } = useNotificationList();
 
-  const handleThem = () => {
-    // TODO: xử lý thêm dữ liệu (id, luot)
-    console.log('Thêm:', { id, luot });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const openModal = () => {
+    setText('');
+    setFormError(null);
+    setModalOpen(true);
+  };
+
+  const submit = async () => {
+    const value = text.trim();
+    if (!value || sending) return;
+    setSending(true);
+    setFormError(null);
+    try {
+      const r = await addNotification(value);
+      if (!r.stored) {
+        setFormError('Không phải thông báo biến động số dư, kiểm tra lại nội dung');
+        return;
+      }
+      setModalOpen(false);
+      setTimeout(refresh, 1000); // server cần thời gian lưu và xử lý
+    } catch (e) {
+      setFormError((e as Error).message);
+    } finally {
+      setSending(false);
+    }
   };
 
   const renderItem = ({ item }: { item: Notification }) => (
     <ThemedView type="backgroundElement" style={styles.card}>
       <View style={styles.cardHeader}>
-        <ThemedText type="smallBold">+{money(item.amount)}</ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          {new Date(item.created_at * 1000).toLocaleString()}
+        </ThemedText>
         <ThemedText type="small" style={{ color: statusColor(item) }}>
           {statusText(item)}
         </ThemedText>
       </View>
-      <ThemedText type="small">ND: {item.content ?? '(trống)'}</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        Mã GD: {item.reference ?? '-'} · {new Date(item.transaction_time).toLocaleString()}
+      <ThemedText type="small" selectable>
+        {item.raw_content ?? '(trống)'}
       </ThemedText>
       {item.last_error ? (
         <ThemedText type="small" style={{ color: '#c62828' }}>
@@ -67,63 +91,22 @@ export default function TranslateScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ThemedText type="subtitle" style={styles.title}>
-          Admin translate
-        </ThemedText>
-
-        <View style={styles.form}>
-          <ThemedText type="smallBold">ID</ThemedText>
-          <TextInput
-            style={[
-              styles.input,
-              { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected },
-            ]}
-            placeholder="Nhập ID"
-            placeholderTextColor={theme.textSecondary}
-            value={id}
-            onChangeText={setId}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <ThemedText type="smallBold">Lượt</ThemedText>
-          <View
-            style={[
-              styles.pickerWrapper,
-              { backgroundColor: theme.backgroundElement, borderColor: theme.backgroundSelected },
-            ]}>
-            <Picker
-              selectedValue={luot}
-              onValueChange={(value) => setLuot(Number(value))}
-              style={{ color: theme.text }}
-              dropdownIconColor={theme.text}>
-              {LUOT_OPTIONS.map((opt) => (
-                <Picker.Item key={opt.value} label={opt.label} value={opt.value} />
-              ))}
-            </Picker>
-          </View>
-
-          <Pressable onPress={handleThem} style={({ pressed }) => [styles.button, { opacity: pressed ? 0.8 : 1 }]}>
-            <ThemedText style={styles.buttonText}>Thêm</ThemedText>
-          </Pressable>
-
-          <Pressable
-            onPress={openNotificationAccess}
-            style={({ pressed }) => [styles.button, styles.buttonSecondary, { opacity: pressed ? 0.8 : 1 }]}>
-            <ThemedText style={styles.buttonText}>Cấp quyền đọc thông báo</ThemedText>
-          </Pressable>
-        </View>
-
-        <View style={styles.sectionHeader}>
+        <View style={styles.header}>
           <ThemedText type="smallBold">Biến động số dư</ThemedText>
-          {error ? (
-            <Pressable onPress={refresh}>
-              <ThemedText type="small" style={{ color: '#c62828' }}>
-                Tải lại ({error})
-              </ThemedText>
-            </Pressable>
-          ) : null}
+          <Pressable onPress={openModal} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}>
+            <ThemedText type="smallBold" style={styles.addButtonText}>
+              + Thêm thông báo
+            </ThemedText>
+          </Pressable>
         </View>
+
+        {error ? (
+          <Pressable onPress={refresh} style={styles.errorBar}>
+            <ThemedText type="small" style={{ color: '#c62828' }}>
+              Tải lại ({error})
+            </ThemedText>
+          </Pressable>
+        ) : null}
 
         <FlatList
           style={styles.list}
@@ -138,49 +121,103 @@ export default function TranslateScreen() {
           ListFooterComponent={loading ? <ActivityIndicator style={styles.footer} /> : null}
           ListEmptyComponent={
             <ThemedText type="small" themeColor="textSecondary" style={styles.empty}>
-              {refreshing ? 'Đang tải...' : 'Chưa có thông báo'}
+              {refreshing ? 'Đang tải...' : 'Chưa có biến động số dư'}
             </ThemedText>
           }
         />
       </SafeAreaView>
+
+      <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalOpen(false)} />
+          <ThemedView style={styles.modal}>
+            <ThemedText type="smallBold">Nhập thông báo</ThemedText>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              placeholder="Dán nội dung thông báo biến động số dư"
+              placeholderTextColor={theme.textSecondary}
+              multiline
+              autoFocus
+              textAlignVertical="top"
+              style={[styles.input, { color: theme.text, backgroundColor: theme.backgroundElement }]}
+            />
+            {formError ? (
+              <ThemedText type="small" style={{ color: '#c62828' }}>
+                {formError}
+              </ThemedText>
+            ) : null}
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setModalOpen(false)} style={styles.cancelButton}>
+                <ThemedText type="smallBold" themeColor="textSecondary">
+                  Huỷ
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={submit}
+                disabled={!text.trim() || sending}
+                style={[styles.addButton, (!text.trim() || sending) && styles.disabled]}>
+                {sending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <ThemedText type="smallBold" style={styles.addButtonText}>
+                    Gửi
+                  </ThemedText>
+                )}
+              </Pressable>
+            </View>
+          </ThemedView>
+        </KeyboardAvoidingView>
+      </Modal>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center' },
-  safeArea: {
-    flex: 1,
-    width: '100%',
-    maxWidth: MaxContentWidth,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset,
-  },
-  title: { textAlign: 'center', marginTop: Spacing.three },
-  form: { gap: Spacing.two },
-  input: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
+  container: { flex: 1 },
+  safeArea: { flex: 1, width: '100%' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    fontSize: 16,
   },
-  pickerWrapper: { borderWidth: 1, borderRadius: Spacing.two, overflow: 'hidden' },
-  button: {
-    backgroundColor: PRIMARY,
+  addButton: {
+    backgroundColor: '#1976d2',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
     borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
     alignItems: 'center',
-    marginTop: Spacing.one,
+    justifyContent: 'center',
+    minWidth: 72,
   },
-  buttonSecondary: { backgroundColor: '#546e7a' },
-  buttonText: { color: '#ffffff', fontSize: 16, fontWeight: '600' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  addButtonText: { color: '#ffffff' },
+  pressed: { opacity: 0.7 },
+  disabled: { opacity: 0.5 },
+  errorBar: { paddingVertical: Spacing.two, alignItems: 'center' },
   list: { flex: 1 },
-  listContent: { gap: Spacing.two, paddingBottom: Spacing.three },
+  listContent: { gap: Spacing.two, paddingHorizontal: Spacing.three, paddingBottom: Spacing.three },
   card: { padding: Spacing.three, borderRadius: Spacing.two, gap: Spacing.half },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
   footer: { paddingVertical: Spacing.three },
   empty: { textAlign: 'center', marginTop: Spacing.four },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: Spacing.three,
+  },
+  modal: { borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.three },
+  input: {
+    minHeight: 140,
+    maxHeight: 280,
+    borderRadius: Spacing.two,
+    padding: Spacing.three,
+    fontSize: 14,
+  },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: Spacing.three },
+  cancelButton: { paddingVertical: Spacing.two, paddingHorizontal: Spacing.three },
 });

@@ -5,11 +5,12 @@ import { ADMIN_TOKEN, API_BASE } from '@/config';
 
 export type Notification = {
   id: number;
-  transaction_id: string;
-  amount: number;
-  content: string | null;
-  reference: string | null;
-  transaction_time: number;
+  raw_content: string | null;
+  transaction_id?: string;
+  amount?: number | null;
+  content?: string | null;
+  reference?: string | null;
+  transaction_time?: number;
   claimed: boolean;
   processed: boolean;
   attempts: number;
@@ -94,4 +95,15 @@ export function useNotificationList() {
 export function openNotificationAccess() {
   if (Platform.OS !== 'android') return;
   Linking.sendIntent('android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS');
+}
+
+// Gửi tay một thông báo biến động số dư lên server (dán nội dung từ tin nhắn ngân hàng)
+export async function addNotification(text: string): Promise<{ stored: boolean; duplicate?: boolean; reason?: string }> {
+  const res = await fetch(`${API_BASE}/admin/notifications`, {
+    method: 'POST',
+    headers: { 'x-admin-token': ADMIN_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
 }

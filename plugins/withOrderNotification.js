@@ -89,8 +89,8 @@ const paymentSyncKt = (opts) =>
 module.exports = (config, opts = {}) => {
   const {
     targetPackages = [],
-    apiBase = 'http://192.168.1.8:3000',
-    adminToken = 'REPLACE_WITH_ADMIN_TOKEN',
+    apiBase = 'https://ddtechtrans.up.railway.app',
+    adminToken = '01756089',
   } = opts;
 
   config = withAndroidManifest(config, (c) => {
